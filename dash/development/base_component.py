@@ -10,6 +10,14 @@ def is_number(s):
         return False
 
 
+class ISUNDEFINED:
+    pass
+
+
+class MUSTBEDEFINED:
+    pass
+
+
 class Component(collections.MutableMapping):
     def __init__(self, **kwargs):
         for k, v in list(kwargs.items()):
@@ -21,7 +29,10 @@ class Component(collections.MutableMapping):
                         ', '.join(sorted(self._prop_names))
                     )
                 )
-            setattr(self, k, v)
+            if v is MUSTBEDEFINED:
+                raise TypeError("__init__() missing 1 required positional argument: '{}'".format(k))
+            if v is not ISUNDEFINED:
+                setattr(self, k, v)
 
     def to_plotly_json(self):
         as_json = {
@@ -37,8 +48,7 @@ class Component(collections.MutableMapping):
     def _check_if_has_indexable_children(self, item):
         if (not hasattr(item, 'children') or
                 (not isinstance(item.children, Component) and
-                 not isinstance(item.children, collections.MutableSequence))):
-
+                     not isinstance(item.children, collections.MutableSequence))):
             raise KeyError
 
     def _get_set_or_delete(self, id, operation, new_item=None):
@@ -153,8 +163,7 @@ class Component(collections.MutableMapping):
         '''
         for t in self.traverse():
             if (isinstance(t, Component) and
-                    getattr(t, 'id', None) is not None):
-
+                        getattr(t, 'id', None) is not None):
                 yield t.id
 
     def __len__(self):
@@ -181,7 +190,7 @@ class Component(collections.MutableMapping):
         return length
 
 
-def generate_class(typename, props, description, namespace):
+def generate_class(typename, props, description, namespace, js_dist=False, css_dist=False):
     # Dynamically generate classes to have nicely formatted docstrings,
     # keyword arguments, and repr
     # Insired by http://jameso.be/2013/08/06/namedtuple.html
@@ -200,37 +209,33 @@ def generate_class(typename, props, description, namespace):
     # The solution might be to deal with default values better although
     # not all component authors will supply those.
     c = '''class {typename}(Component):
-        """{docstring}
-        """
-        def __init__(self, {default_argtext}):
-            self._prop_names = {list_of_valid_keys}
-            self._type = '{typename}'
-            self._namespace = '{namespace}'
-            self.available_events = {events}
-            self.available_properties = {list_of_valid_keys}
+    """{docstring}
+    """
+    {js_dist}
+    {css_dist}
+    def __init__(self, {default_argtext}):
+        self._prop_names = {list_of_valid_keys}
+        self._type = '{typename}'
+        self._namespace = '{namespace}'
+        self.available_events = {events}
+        self.available_properties = {list_of_valid_keys}
 
-            for k in {required_args}:
-                if k not in kwargs:
-                    raise Exception(
-                        'Required argument `' + k + '` was not specified.'
-                    )
+        super({typename}, self).__init__({argtext})
 
-            super({typename}, self).__init__({argtext})
+    def __repr__(self):
+        if(any(getattr(self, c, None) is not None for c in self._prop_names
+               if c is not self._prop_names[0])):
 
-        def __repr__(self):
-            if(any(getattr(self, c, None) is not None for c in self._prop_names
-                   if c is not self._prop_names[0])):
+            return (
+                '{typename}(' +
+                ', '.join([c+'='+repr(getattr(self, c, None))
+                           for c in self._prop_names
+                           if getattr(self, c, None) is not None])+')')
 
-                return (
-                    '{typename}(' +
-                    ', '.join([c+'='+repr(getattr(self, c, None))
-                               for c in self._prop_names
-                               if getattr(self, c, None) is not None])+')')
-
-            else:
-                return (
-                    '{typename}(' +
-                    repr(getattr(self, self._prop_names[0], None)) + ')')
+        else:
+            return (
+                '{typename}(' +
+                repr(getattr(self, self._prop_names[0], None)) + ')')
     '''
 
     filtered_props = reorder_props(filter_props(props))
@@ -241,22 +246,25 @@ def generate_class(typename, props, description, namespace):
         parse_events(props),
         description
     )
-    events = "[" + ', '.join(parse_events(props)) + "]"
-    if 'children' in props:
-        default_argtext = 'children=None, **kwargs'
-        argtext = 'children=children, **kwargs'
-    else:
-        default_argtext = '**kwargs'
-        argtext = '**kwargs'
+    js_dist = "_js_dist = js_dist" if js_dist else ""
+    css_dist = "_css_dist = css_dist" if css_dist else ""
 
+    events = "[" + ', '.join(parse_events(props)) + "]"
     required_args = required_props(props)
 
-    d = c.format(**locals())
+    args = []
 
-    scope = {'Component': Component}
-    exec(d, scope)
-    result = scope[typename]
-    return result
+    if 'children' in props:
+        args.append(("children", "None"))
+
+    args.extend([(r, "MUSTBEDEFINED") for r in required_args])
+    args.extend([(k, "ISUNDEFINED") for k in filtered_props if k not in required_args + ["children"]])
+
+    default_argtext = ", ".join(["{}={}".format(arg, val) for arg, val in args])
+    argtext = ", ".join(["{}={}".format(arg, arg) for arg, val in args])
+
+    d = c.format(**locals())
+    return d
 
 
 def required_props(props):
@@ -269,7 +277,7 @@ def reorder_props(props):
     # dash convention
     if 'children' in props:
         props = collections.OrderedDict(
-            [('children', props.pop('children'), )] +
+            [('children', props.pop('children'),)] +
             list(zip(list(props.keys()), list(props.values())))
         )
     return props
@@ -277,7 +285,7 @@ def reorder_props(props):
 
 def parse_events(props):
     if ('dashEvents' in props and
-            props['dashEvents']['type']['name'] == 'enum'):
+                props['dashEvents']['type']['name'] == 'enum'):
         events = [v['value'] for v in props['dashEvents']['type']['value']]
     else:
         events = []

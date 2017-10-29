@@ -1,10 +1,14 @@
-from .base_component import generate_class
 import collections
 import json
+import os
+
+from .base_component import generate_class
 
 
 def load_components(metadata_path,
-                    namespace='default_namespace'):
+                    namespace='default_namespace',
+                    js=None,
+                    css=None):
     """Load React component metadata into a format Dash can parse.
 
     Usage: load_components('../../component-suites/lib/metadata.json')
@@ -19,12 +23,13 @@ def load_components(metadata_path,
     """
 
     components = []
+    names = []
 
     # Start processing
     with open(metadata_path) as data_file:
         json_string = data_file.read()
-        data = json\
-            .JSONDecoder(object_pairs_hook=collections.OrderedDict)\
+        data = json \
+            .JSONDecoder(object_pairs_hook=collections.OrderedDict) \
             .decode(json_string)
 
     # Iterate over each property name (which is a path to the component)
@@ -41,9 +46,22 @@ def load_components(metadata_path,
             name,
             componentData['props'],
             componentData['description'],
-            namespace
+            namespace,
+            js_dist=js is not None,
+            css_dist=css is not None,
         )
 
         components.append(component)
+        names.append("'{}'".format(name))
+
+    class_path = os.path.join(os.path.dirname(metadata_path), "metadata.py")
+    with open(class_path, "w") as f:
+        f.write("from dash.development.base_component import Component, MUSTBEDEFINED, ISUNDEFINED\n\n")
+        if js:
+            f.write("js_dist = {}\n\n".format(repr(js)))
+        if css:
+            f.write("css_dist = {}\n\n".format(repr(css)))
+        f.write("\n\n".join(components))
+        f.write("\n\n__all__ = [{}]".format(",".join(names)))
 
     return components
