@@ -1,20 +1,21 @@
-from collections import OrderedDict
+import collections
 import inspect
 import json
-import plotly
-import unittest
-import collections
 import os
+import unittest
+from collections import OrderedDict
+
+import plotly
 
 from dash.development.base_component import (
     generate_class,
     Component,
     js_to_py_type,
     create_docstring,
-    parse_events
-)
+    parse_events,
+    ISUNDEFINED, MUSTBEDEFINED)
 
-Component._prop_names = ('id', 'a', 'children', 'style', )
+Component._prop_names = ('id', 'a', 'children', 'style',)
 Component._type = 'TestComponent'
 Component._namespace = 'test_namespace'
 
@@ -112,7 +113,7 @@ class TestComponent(unittest.TestCase):
             len(c),
             5 +  # 5 components
             5 +  # c2 has 2 strings, 2 numbers, and a None
-            1    # c1 has 1 string
+            1  # c1 has 1 string
         )
 
     def test_set_item_with_nested_children_with_mixed_strings_and_without_lists(self):  # noqa: E501
@@ -164,9 +165,9 @@ class TestComponent(unittest.TestCase):
         Component._type
 
         self.assertEqual(json.loads(json.dumps(
-                c.to_plotly_json(),
-                cls=plotly.utils.PlotlyJSONEncoder
-            )), {
+            c.to_plotly_json(),
+            cls=plotly.utils.PlotlyJSONEncoder
+        )), {
             'type': 'TestComponent',
             'namespace': 'test_namespace',
             'props': {
@@ -473,10 +474,12 @@ class TestGenerateClass(unittest.TestCase):
         path = os.path.join('tests', 'development', 'metadata_test.json')
         with open(path) as data_file:
             json_string = data_file.read()
-            data = json\
-                .JSONDecoder(object_pairs_hook=collections.OrderedDict)\
+            data = json \
+                .JSONDecoder(object_pairs_hook=collections.OrderedDict) \
                 .decode(json_string)
             self.data = data
+
+        scope = {"Component": Component, "ISUNDEFINED": ISUNDEFINED, "MUSTBEDEFINED": MUSTBEDEFINED}
 
         self.ComponentClass = generate_class(
             typename='Table',
@@ -484,14 +487,16 @@ class TestGenerateClass(unittest.TestCase):
             description=data['description'],
             namespace='TableComponents'
         )
+        exec(self.ComponentClass, scope)
+        self.ComponentClass = scope['Table']
 
         path = os.path.join(
             'tests', 'development', 'metadata_required_test.json'
         )
         with open(path) as data_file:
             json_string = data_file.read()
-            required_data = json\
-                .JSONDecoder(object_pairs_hook=collections.OrderedDict)\
+            required_data = json \
+                .JSONDecoder(object_pairs_hook=collections.OrderedDict) \
                 .decode(json_string)
             self.required_data = required_data
 
@@ -501,6 +506,8 @@ class TestGenerateClass(unittest.TestCase):
             description=required_data['description'],
             namespace='TableComponents'
         )
+        exec(self.ComponentClassRequired, scope)
+        self.ComponentClassRequired = scope['TableRequired']
 
     def test_to_plotly_json(self):
         c = self.ComponentClass()
@@ -594,11 +601,28 @@ class TestGenerateClass(unittest.TestCase):
         # http://stackoverflow.com/questions/2677185/
         self.assertEqual(
             inspect.getargspec(self.ComponentClass.__init__).args,
-            ['self', 'children']
+            ['self',
+             'children',
+             'optionalArray',
+             'optionalBool',
+             'optionalNumber',
+             'optionalObject',
+             'optionalString',
+             'optionalNode',
+             'optionalElement',
+             'optionalEnum',
+             'optionalUnion',
+             'optionalArrayOf',
+             'optionalObjectOf',
+             'optionalObjectWithShapeAndNestedDescription',
+             'optionalAny',
+             'customProp',
+             'customArrayProp',
+             'id']
         )
         self.assertEqual(
             inspect.getargspec(self.ComponentClass.__init__).defaults,
-            (None, )
+            (None,) + (ISUNDEFINED,) * 16
         )
 
     def test_required_props(self):
@@ -616,8 +640,8 @@ class TestMetaDataConversions(unittest.TestCase):
         path = os.path.join('tests', 'development', 'metadata_test.json')
         with open(path) as data_file:
             json_string = data_file.read()
-            data = json\
-                .JSONDecoder(object_pairs_hook=collections.OrderedDict)\
+            data = json \
+                .JSONDecoder(object_pairs_hook=collections.OrderedDict) \
                 .decode(json_string)
             self.data = data
 
@@ -661,7 +685,8 @@ class TestMetaDataConversions(unittest.TestCase):
                 "Those keys have the following types: ",
                 "  - color (string; optional)",
                 "  - fontSize (number; optional)",
-                "  - figure (optional): Figure is a plotly graph object. figure has the following type: dict containing keys 'data', 'layout'.",  # noqa: E501
+                "  - figure (optional): Figure is a plotly graph object. figure has the following type: dict containing keys 'data', 'layout'.",
+                # noqa: E501
                 "Those keys have the following types: ",
                 "  - data (list; optional): data is a collection of traces",
                 "  - layout (dict; optional): layout describes the rest of the figure"  # noqa: E501
@@ -689,7 +714,6 @@ class TestMetaDataConversions(unittest.TestCase):
         assert_docstring(self.assertEqual, docstring)
 
     def test_docgen_to_python_args(self):
-
         props = self.data['props']
 
         for prop_name, prop in list(props.items()):
@@ -752,6 +776,6 @@ def assert_docstring(assertEqual, docstring):
             '- id (string; optional)',
             '',
             "Available events: 'restyle', 'relayout', 'click'",
-            '        '
-            ])[i]
-        )
+            '    '
+        ])[i]
+                    )

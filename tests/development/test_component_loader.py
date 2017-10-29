@@ -1,9 +1,10 @@
 import collections
-from dash.development.component_loader import load_components
-from dash.development.base_component import generate_class, Component
 import json
 import os
 import unittest
+
+from dash.development.base_component import generate_class, Component, ISUNDEFINED, MUSTBEDEFINED
+from dash.development.component_loader import load_components
 
 METADATA_PATH = 'metadata.json'
 
@@ -79,8 +80,8 @@ METADATA_STRING = '''{
         }
     }
 }'''
-METADATA = json\
-    .JSONDecoder(object_pairs_hook=collections.OrderedDict)\
+METADATA = json \
+    .JSONDecoder(object_pairs_hook=collections.OrderedDict) \
     .decode(METADATA_STRING)
 
 
@@ -93,12 +94,16 @@ class TestLoadComponents(unittest.TestCase):
         os.remove(METADATA_PATH)
 
     def test_loadcomponents(self):
+        scope = {"Component": Component, "ISUNDEFINED": ISUNDEFINED, "MUSTBEDEFINED": MUSTBEDEFINED}
+
         MyComponent = generate_class(
             'MyComponent',
             METADATA['MyComponent.react.js']['props'],
             METADATA['MyComponent.react.js']['description'],
             'default_namespace'
         )
+        exec(MyComponent, scope)
+        MyComponent = scope['MyComponent']
 
         A = generate_class(
             'A',
@@ -106,8 +111,11 @@ class TestLoadComponents(unittest.TestCase):
             METADATA['A.react.js']['description'],
             'default_namespace'
         )
+        exec(A, scope)
+        A = scope['A']
 
         c = load_components(METADATA_PATH)
+        import metadata as c
 
         MyComponentKwargs = {
             'foo': 'Hello World',
@@ -126,10 +134,10 @@ class TestLoadComponents(unittest.TestCase):
 
         self.assertEqual(
             repr(MyComponent(**MyComponentKwargs)),
-            repr(c[0](**MyComponentKwargs))
+            repr(getattr(c, c.__all__[0])(**MyComponentKwargs))
         )
 
         self.assertEqual(
             repr(A(**AKwargs)),
-            repr(c[1](**AKwargs))
+            repr(getattr(c, c.__all__[1])(**AKwargs))
         )
